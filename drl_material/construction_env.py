@@ -2,7 +2,6 @@ import gymnasium as gym
 import numpy as np
 from gymnasium import spaces
 import random
-from datetime import datetime
 
 class ConstructionEnv(gym.Env):
     def __init__(self):
@@ -16,20 +15,19 @@ class ConstructionEnv(gym.Env):
             "productivity": spaces.Box(low=0, high=np.inf, shape=(3,), dtype=np.float32),
         })
 
-        # Define action space
-        self.action_space = spaces.Tuple((
-            spaces.Discrete(6),  # Choose one of 6 activities
-            spaces.Discrete(101)  # Produce between 0-100 units
-        ))
+        # **Modified Action Space**: Flattened Tuple(Discrete(6), Discrete(101)) → Discrete(6 * 101)
+        self.num_activities = 6
+        self.num_quantities = 101
+        self.action_space = spaces.Discrete(self.num_activities * self.num_quantities)
 
         # Define dependencies
         self.activities = [
-            {"id": 0, "type": "production", "material": 0, "requirement": 15, "planned_duration": 3, "planned_start": "5-Aug-24", "planned_end": "7-Aug-24", "planned_productivity": 5.00, "predecessor": [], "successor": [1]},
-            {"id": 1, "type": "installation", "material": 0, "requirement": 15, "planned_duration": 5, "planned_start": "8-Aug-24", "planned_end": "12-Aug-24", "planned_productivity": 3.00, "predecessor": [0], "successor": [3]},
-            {"id": 2, "type": "production", "material": 1, "requirement": 25, "planned_duration": 3, "planned_start": "5-Aug-24", "planned_end": "7-Aug-24", "planned_productivity": 8.33, "predecessor": [], "successor": [3]},
-            {"id": 3, "type": "installation", "material": 1, "requirement": 25, "planned_duration": 6, "planned_start": "13-Aug-24", "planned_end": "18-Aug-24", "planned_productivity": 4.17, "predecessor": [1, 2], "successor": [5]},
-            {"id": 4, "type": "production", "material": 2, "requirement": 20, "planned_duration": 5, "planned_start": "5-Aug-24", "planned_end": "9-Aug-24", "planned_productivity": 4.00, "predecessor": [], "successor": [5]},
-            {"id": 5, "type": "installation", "material": 2, "requirement": 20, "planned_duration": 8, "planned_start": "19-Aug-24", "planned_end": "26-Aug-24", "planned_productivity": 2.50, "predecessor": [3, 4], "successor": []}
+            {"id": 0, "type": "production", "material": 0, "requirement": 15, "predecessor": [], "successor": [1]},
+            {"id": 1, "type": "installation", "material": 0, "requirement": 15, "predecessor": [0], "successor": [3]},
+            {"id": 2, "type": "production", "material": 1, "requirement": 25, "predecessor": [], "successor": [3]},
+            {"id": 3, "type": "installation", "material": 1, "requirement": 25, "predecessor": [1, 2], "successor": [5]},
+            {"id": 4, "type": "production", "material": 2, "requirement": 20, "predecessor": [], "successor": [5]},
+            {"id": 5, "type": "installation", "material": 2, "requirement": 20, "predecessor": [3, 4], "successor": []}
         ]
 
         # Initialize state
@@ -37,32 +35,38 @@ class ConstructionEnv(gym.Env):
             "activity_status": np.zeros(6, dtype=np.int32),
             "inventory": np.zeros(3, dtype=np.int32),
             "installed_material": np.zeros(3, dtype=np.int32),
-            "productivity": np.array([1.0, 1.0, 1.0])
+            "productivity": np.array([1.0, 1.0, 1.0], dtype=np.float32)
         }
 
         self.cumulative_reward = 0  # Track cumulative reward
         self.excess_inventory_penalty = np.zeros(3, dtype=np.int32)  # Track excess inventory penalty per material
+        self.step_count = 0  # Track the number of steps
+        self.episode_count = 0  # Track the number of episodes
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-
+        self.episode_count += 1  # Increment episode counter
         self.state = {
             "activity_status": np.zeros(6, dtype=np.int32),
             "inventory": np.zeros(3, dtype=np.int32),
             "installed_material": np.zeros(3, dtype=np.int32),
-            "productivity": np.array([1.0, 1.0, 1.0])
+            "productivity": np.array([1.0, 1.0, 1.0], dtype=np.float32)  # Ensure float32 type
         }
         self.cumulative_reward = 0  # Reset cumulative reward
         self.excess_inventory_penalty = np.zeros(3, dtype=np.int32)  # Reset penalty tracking
+        self.step_count = 0  # Reset step count
 
-        # Extract the earliest planned start date from activities
-        planned_start_dates = [datetime.strptime(act["planned_start"], "%d-%b-%y") for act in self.activities]
-        self.simulation_date = min(planned_start_dates)  # Set as the earliest date
+        print(f"🚀 Starting Episode {self.episode_count}")
 
         return self.state, {}
 
     def step(self, action):
-        activity_idx, _ = action
+        self.step_count += 1  # Increment step count
+
+        # **Decode the Discrete Action** (Extract activity index and quantity)
+        activity_idx = action // self.num_quantities  # Extract activity index
+        quantity = action % self.num_quantities  # Extract production quantity
+
         activity = self.activities[activity_idx]
         reward, done = 0, False
         reward_reason = ""
@@ -72,9 +76,6 @@ class ConstructionEnv(gym.Env):
             reward = -5
             reward_reason = "Penalty for repeating completed activity"
             return self.state, reward, False, False, {}
-
-        # Choose random quantity between 1 and the max requirement
-        quantity = random.randint(1, activity["requirement"])
 
         if activity["type"] == "production":
             material_idx = activity["material"]
@@ -129,30 +130,12 @@ class ConstructionEnv(gym.Env):
         self.cumulative_reward += reward  # Update cumulative reward
         done = all(status == 2 for status in self.state["activity_status"])
 
-        print(f"Step: {step_count}, ({activity_idx}, {quantity}), Type: {activity['type']}, Status: {self.state['activity_status']}, Inventory: {self.state['inventory']}, Installed Material: {self.state['installed_material']}, Reward: {reward}, Reason: {reward_reason}, Cumulative Reward: {self.cumulative_reward}")
-
         return self.state, reward, done, False, {}
 
     def render(self):
+        print(f"🚀 Episode: {self.episode_count}")
         print(f"Activity Status: {self.state['activity_status']}")
         print(f"Inventory: {self.state['inventory']}")
         print(f"Installed Material: {self.state['installed_material']}")
         print(f"Productivity: {self.state['productivity']}")
         print(f"Cumulative Reward: {self.cumulative_reward}")
-
-# Register environment
-gym.register(id='ConstructionEnv-v0', entry_point=ConstructionEnv)
-
-# Run until all activities finish
-env = gym.make("ConstructionEnv-v0")
-
-state, _ = env.reset()
-done = False
-step_count = 0
-
-print("Episode 1:")
-while not done:
-    step_count += 1
-    action = (env.action_space.sample()[0], 0)  # Selecting only activity index
-    state, reward, done, _, _ = env.step(action)
-print("All activities completed.")
