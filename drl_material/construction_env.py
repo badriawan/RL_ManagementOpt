@@ -52,7 +52,7 @@ class ConstructionEnv(gym.Env):
             "installed_material": np.zeros(3, dtype=np.int32),
             "productivity": np.array([1.0, 1.0, 1.0], dtype=np.float32)  # Ensure float32 type
         }
-        self.cumulative_reward = 0  # Reset cumulative reward
+        #self.cumulative_reward = 0  # Reset cumulative reward
         self.excess_inventory_penalty = np.zeros(3, dtype=np.int32)  # Reset penalty tracking
         self.step_count = 0  # Reset step count
 

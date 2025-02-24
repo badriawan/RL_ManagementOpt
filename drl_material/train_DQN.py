@@ -8,13 +8,13 @@ from stable_baselines3.common.env_util import make_vec_env
 from construction_env import ConstructionEnv  # Import your custom environment
 
 # Register environment
-gym.register(id="ConstructionEnv-v0", entry_point="construction_env:ConstructionEnv")
+gym.register(id="ConstructionEnv", entry_point="construction_env:ConstructionEnv")
 
 # Check if GPU is available
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 # Create vectorized environment
-env = make_vec_env("ConstructionEnv-v0", n_envs=1, monitor_dir="./tensorboard_logs/")
+env = make_vec_env("ConstructionEnv", n_envs=1, monitor_dir="./tensorboard_logs/")
 
 # Set up logging and model saving
 log_dir = "./tensorboard_logs/"
@@ -24,7 +24,7 @@ save_dir = "./models/"
 os.makedirs(save_dir, exist_ok=True)
 
 # **Check if there is an existing model to continue training**
-model_path = os.path.join(save_dir, "dqn_construction_final.zip")
+model_path = os.path.join(save_dir, "dqn_construction_5000.zip")
 resumed_training = False  # Flag to track if training was resumed
 
 if os.path.exists(model_path):
@@ -66,7 +66,7 @@ while model.num_timesteps < target_steps:
     model.learn(total_timesteps=target_steps, callback=callbacks)
 
 # Save updated model
-model.save(model_path)
+model.save("dqn_construction_10000.zip")
 
 # **Print message at the END of training**
 if resumed_training:
